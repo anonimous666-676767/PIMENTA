@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pimenta · jogo de festa +18</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#1a0b14;--card:#2b1222;--rosa:#ff3d81;--ouro:#ffc857;--txt:#fff1f5;--mut:#c79aae}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -10%,#4a1636,var(--bg) 60%);color:var(--txt);font-family:"Trebuchet MS","Segoe UI",sans-serif;display:flex;justify-content:center;padding:20px}
+main{width:100%;max-width:520px}
+h1{font-family:Georgia,serif;font-style:italic;font-size:3rem;margin:.2em 0 0;color:var(--rosa);letter-spacing:-1px}
+p.sub{color:var(--mut);margin:0 0 1.2em}
+input,button{font:inherit;border-radius:14px;border:2px solid #5a2444;padding:14px;width:100%;margin:6px 0}
+input{background:#12060d;color:var(--txt)}
+button{background:var(--rosa);border-color:var(--rosa);color:#fff;font-weight:700;cursor:pointer}
+button.alt{background:transparent;color:var(--txt);border-color:#5a2444}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ouro)}
+.box{background:var(--card);border-radius:18px;padding:18px;margin:14px 0}
+.carta{font-family:Georgia,serif;font-size:1.6rem;line-height:1.3;min-height:150px;display:flex;flex-direction:column;justify-content:center;border:2px dashed var(--rosa)}
+.tipo{font-family:"Trebuchet MS",sans-serif;font-size:.9rem;color:var(--ouro);margin-bottom:.6em}
+.row{display:flex;gap:10px}
+.row button{flex:1}
+.placar div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #4a1d38}
+.vez{color:var(--ouro)}
+.codigo{font-size:2rem;letter-spacing:6px;text-align:center;color:var(--ouro);font-weight:700}
+small{color:var(--mut)}
+.oculto{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Pimenta</h1>
+<p class="sub">Jogo de festa para maiores de 18. Malícia sim, baixaria não.</p>
+
+<section id="entrada" class="box">
+  <input id="nome" placeholder="Seu apelido" maxlength="14">
+  <button id="criar">Criar sala</button>
+  <input id="codigo" placeholder="Código da sala (ex: K7QP)" maxlength="4" style="text-transform:uppercase">
+  <button id="entrar" class="alt">Entrar na sala</button>
+  <small id="erro"></small>
+</section>
+
+<section id="jogo" class="oculto">
+  <div class="box">
+    <small>Código da sala (passe para a galera)</small>
+    <div class="codigo" id="sala"></div>
+  </div>
+  <div class="box carta" id="carta"><span class="tipo">Aguardando o início…</span>Chame pelo menos mais uma pessoa.</div>
+  <div class="row oculto" id="votos"></div>
+  <button id="prox" class="oculto">Próxima carta</button>
+  <div class="box placar" id="placar"></div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const CARTAS={
+ nunca:[
+  "Eu nunca mandei mensagem apaixonada para a pessoa errada.",
+  "Eu nunca dei um beijo só para ganhar uma aposta.",
+  "Eu nunca fingi que estava dormindo para evitar um papo de relacionamento.",
+  "Eu nunca stalkeei o perfil de um crush até o ano de 2014.",
+  "Eu nunca saí de um encontro e fui direto contar tudo para a melhor amiga.",
+  "Eu nunca usei uma cantada ruim e deu certo.",
+  "Eu nunca fiquei com alguém só por causa da voz.",
+  "Eu nunca apaguei conversa do celular antes de emprestá-lo.",
+  "Eu nunca fui pego no flagra dando um beijo escondido.",
+  "Eu nunca troquei de roupa três vezes antes de um encontro."],
+ desafio:[
+  "Faça sua melhor cantada para o jogador à sua esquerda.",
+  "Descreva seu beijo ideal usando só emojis (em voz alta).",
+  "Dê uma nota de 0 a 10 para a sua última paquera, sem citar o nome.",
+  "Faça sua cara mais sedutora por 10 segundos sem rir.",
+  "Mande um áudio de bom dia romântico para a última pessoa do WhatsApp (ou finja que mandou).",
+  "Imite o jeito que você acha que alguém do grupo flerta.",
+  "Declare seu amor por um alimento, com todo o drama possível.",
+  "Fale uma frase safada usando só nomes de frutas."],
+ verdade:[
+  "Qual foi o seu pior fora numa paquera?",
+  "Qual foi o lugar mais inusitado em que você já deu um beijo?",
+  "Quem aqui você acha que beija melhor? Responda com coragem.",
+  "Qual é a sua maior mania na hora de flertar?",
+  "Qual foi a mensagem mais ousada que você já mandou?",
+  "Qual característica te deixa na hora caidinho(a) por alguém?",
+  "Qual crush de infância você nunca esqueceu?",
+  "Qual é o seu maior ponto fraco em um primeiro encontro?"]
+};
+const TIPOS={nunca:"🙈 Eu nunca",desafio:"🔥 Desafio",verdade:"💋 Verdade"};
+let peer,conns=[],souHost=false,meuId=null,hostConn=null,S={players:[],card:null,turn:0,votes:{},reveal:false};
+
+const san=s=>s.replace(/[<>&"]/g,"");
+function nomeOk(){const n=san($("nome").value.trim());if(!n){$("erro").textContent="Digite um apelido.";return null}return n}
+
+// ---------- HOST ----------
+$("criar").onclick=()=>{
+  const nome=nomeOk();if(!nome)return;
+  const cod=Array.from({length:4},()=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.random()*32|0]).join("");
+  peer=new Peer("pimenta-"+cod);
+  peer.on("open",()=>{
+    souHost=true;meuId="host";
+    S.players=[{id:"host",name:nome,score:0}];
+    mostrarJogo(cod);broadcast();
+  });
+  peer.on("error",e=>$("erro").textContent="Erro: "+e.type+" (tente de novo)");
+  peer.on("connection",c=>{
+    conns.push(c);
+    c.on("data",m=>hostRecebe(c,m));
+    c.on("close",()=>{conns=conns.filter(x=>x!==c);S.players=S.players.filter(p=>p.id!==c.peer);delete S.votes[c.peer];broadcast()});
+  });
+};
+function hostRecebe(c,m){
+  if(m.t==="join"&&!S.players.find(p=>p.id===c.peer)){
+    S.players.push({id:c.peer,name:san(String(m.name)).slice(0,14),score:0});broadcast();
+  }
+  if(m.t==="vote")registrarVoto(c.peer,m.v);
+}
+function registrarVoto(id,v){
+  if(!S.card||S.reveal||S.votes[id]!==undefined)return;
+  if(S.card.tipo!=="nunca"&&S.players[S.turn]?.id===id)return;
+  S.votes[id]=v;
+  const esperados=S.card.tipo==="nunca"?S.players.length:S.players.length-1;
+  if(Object.keys(S.votes).length>=esperados){
+    S.reveal=true;
+    const sim=Object.values(S.votes).filter(x=>x==="sim").length;
+    if(S.card.tipo==="nunca")S.players.forEach(p=>{if(S.votes[p.id]==="sim")p.score+=1});
+    else if(sim>esperados/2)S.players[S.turn].score+=2;
+  }
+  broadcast();
+}
+function proxima(){
+  if(S.players.length<2)return;
+  const t=Object.keys(CARTAS)[Math.random()*3|0];
+  const lista=CARTAS[t];
+  S.card={tipo:t,texto:lista[Math.random()*lista.length|0]};
+  S.turn=(S.turn+1)%S.players.length;S.votes={};S.reveal=false;broadcast();
+}
+function broadcast(){conns.forEach(c=>c.open&&c.send({t:"state",S}));render()}
+
+// ---------- CLIENTE ----------
+$("entrar").onclick=()=>{
+  const nome=nomeOk();if(!nome)return;
+  const cod=$("codigo").value.trim().toUpperCase();if(cod.length!==4){$("erro").textContent="Código com 4 caracteres.";return}
+  peer=new Peer();
+  peer.on("open",id=>{
+    meuId=id;hostConn=peer.connect("pimenta-"+cod,{reliable:true});
+    hostConn.on("open",()=>{hostConn.send({t:"join",name:nome});mostrarJogo(cod)});
+    hostConn.on("data",m=>{if(m.t==="state"){S=m.S;render()}});
+    hostConn.on("close",()=>alert("O anfitrião saiu. Recarregue a página."));
+  });
+  peer.on("error",e=>$("erro").textContent=e.type==="peer-unavailable"?"Sala não encontrada.":"Erro: "+e.type);
+};
+
+// ---------- UI ----------
+function mostrarJogo(cod){$("entrada").classList.add("oculto");$("jogo").classList.remove("oculto");$("sala").textContent=cod;if(souHost)$("prox").classList.remove("oculto")}
+function votar(v){souHost?registrarVoto("host",v):hostConn.send({t:"vote",v});}
+$("prox").onclick=proxima;
+function render(){
+  const c=S.card,vez=S.players[S.turn];
+  if(c){
+    const alvo=c.tipo==="nunca"?"Todo mundo responde":`<span class="vez">Vez de ${vez?vez.name:"?"}</span>`;
+    $("carta").innerHTML=`<span class="tipo">${TIPOS[c.tipo]} · ${alvo}</span>${c.texto}`;
+    const euVotei=S.votes[meuId]!==undefined, souAlvo=c.tipo!=="nunca"&&vez&&vez.id===meuId;
+    const pode=!S.reveal&&!euVotei&&!souAlvo;
+    const [a,b]=c.tipo==="nunca"?["🔥 Eu já","😇 Nunca"]:["✅ Mandou bem","🐔 Amarelou"];
+    $("votos").classList.remove("oculto");
+    $("votos").innerHTML=`<button ${pode?"":"disabled"} id="vs">${a}</button><button class="alt" ${pode?"":"disabled"} id="vn">${b}</button>`;
+    $("vs").onclick=()=>votar("sim");$("vn").onclick=()=>votar("nao");
+  }
+  $("prox").disabled=S.players.length<2||(c&&!S.reveal);
+  $("placar").innerHTML="<b>Placar</b>"+[...S.players].sort((x,y)=>y.score-x.score).map(p=>{
+    const st=c&&!S.reveal&&S.votes[p.id]!==undefined?" ✔":"";
+    return `<div><span>${p.name}${p.id===meuId?" (você)":""}${st}</span><span>${p.score} 🌶️</span></div>`}).join("");
+}
+</script>
+</body>
+</html>
