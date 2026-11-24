@@ -1,8 +1,8 @@
 // Multiplayer WebRTC (PeerJS). O criador da sala é a autoridade da simulação.
-const MP={peer:null,host:false,conns:{},hostConn:null,myId:'me',code:'',onMsg:null,
+const MP={cfg(){let t=[];try{t=JSON.parse(localStorage.getItem('mo_turn')||'[]')}catch(e){}return{config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'},...t]}}},peer:null,host:false,conns:{},hostConn:null,myId:'me',code:'',onMsg:null,
 toast(t){const e=document.getElementById('toast');e.textContent=t;clearTimeout(MP.tt);MP.tt=setTimeout(()=>e.textContent='',3500)},
 err(e){MP.toast('Servidor de sinalização indisponível ou código inválido: '+(e.type||e))},
-create(info,cb){MP.host=true;MP.peer=new Peer();
+create(info,cb){MP.host=true;MP.peer=new Peer(MP.cfg());
  MP.peer.on('error',MP.err);
  MP.peer.on('open',id=>{MP.code=id;MP.myId=id;cb(id)});
  MP.peer.on('connection',c=>{
@@ -11,7 +11,7 @@ create(info,cb){MP.host=true;MP.peer=new Peer();
   c.on('data',m=>{m.from=c.peer;MP.onMsg(m)});
   c.on('close',()=>{delete MP.conns[c.peer];MP.onMsg({t:'left',from:c.peer})});
  })},
-join(code,info,cb){MP.host=false;MP.peer=new Peer();MP.peer.on('error',MP.err);
+join(code,info,cb){MP.host=false;MP.peer=new Peer(MP.cfg());MP.peer.on('error',MP.err);
  MP.peer.on('open',id=>{MP.myId=id;const c=MP.peer.connect(code.trim(),{reliable:false});MP.hostConn=c;
   c.on('open',()=>{c.send({t:'join',info});cb()});
   c.on('data',m=>MP.onMsg(m));
